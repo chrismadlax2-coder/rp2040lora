@@ -136,3 +136,8 @@ Copy-Item build/examples/crsf-rc/crsf_rx.uf2 I:\
     - **連線與操控驗證**：GP2 斷開後，板 A 瞬間鎖定板 B，即時日誌確認：
       `[RX] Rate: 100 pkts/s | FHSS: LOCKED 100Hz | Bound UID: 0x2B411597 | RSSI: -1dBm | SNR: 2dB`
     - **地面站即時舵量**：Mission Planner 接收機校準分頁確認遙控器手動輸入舵量流暢跟隨，無體感延遲，證實多發射機與接收機之動態配對、儲存與切換機制完全健全。
+  - **反向防串擾與舊設備作廢驗證 (板 C 發射機 vs 板 A 接收機)**:
+    - **測試條件**：板 A 重新綁定板 B（`0x2B411597`）後，關閉板 B，重新開啟先前綁定過但已被覆蓋的板 C（TX 2，UID `0x2C843F97`）。
+    - **接收端表現**：板 A 感應到極強射頻（RSSI -1dBm, SNR 2dB），但判定非當前綁定之 UID，立即全數拋棄，除錯日誌確認：
+      `[RX] Rate: 0 pkts/s | FHSS: SEARCHING (Ch0) | Bound UID: 0x2B411597 | RSSI: -1dBm | SNR: 2dB`
+    - **驗證結論**：舊發射機（板 C）已被徹底作廢，百分之百無法再對板 A 產生任何控制或干擾，雙向防串擾機制無懈可擊。
