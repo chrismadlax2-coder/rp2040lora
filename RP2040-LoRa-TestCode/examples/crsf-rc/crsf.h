@@ -3,10 +3,16 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 
 #define CRSF_BAUDRATE                     416666
 #define CRSF_MAX_FRAME_SIZE               64
 #define CRSF_RC_FRAME_SIZE                26
+
+// Channel Standard Values
+#define CRSF_CHANNEL_VALUE_MIN            172   // ~988 us (Minimum stick / Throttle cutoff / Switch low)
+#define CRSF_CHANNEL_VALUE_MID            992   // 1500 us (Center stick)
+#define CRSF_CHANNEL_VALUE_MAX            1811  // ~2012 us (Maximum stick / Switch high)
 
 // Device Addresses
 #define CRSF_ADDRESS_BROADCAST            0x00
@@ -58,6 +64,36 @@ static inline uint8_t crsf_crc8(const uint8_t *data, uint8_t len)
         }
     }
     return crc;
+}
+
+// Build a standard Failsafe frame for Flight Controller
+// (Throttle=MIN, Roll/Pitch/Yaw=MID, AUX1/ARM=MIN, AUX2..12=MID)
+static inline void crsf_build_failsafe_frame( uint8_t *out_frame )
+{
+    out_frame[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER; // 0xC8
+    out_frame[1] = 24; // Type(1) + Payload(22) + CRC(1) = 24
+    out_frame[2] = CRSF_FRAMETYPE_RC_CHANNELS_PACKED;
+
+    crsf_channels_t channels;
+    channels.ch0 = CRSF_CHANNEL_VALUE_MID; // Roll: 1500us (Center)
+    channels.ch1 = CRSF_CHANNEL_VALUE_MID; // Pitch: 1500us (Center)
+    channels.ch2 = CRSF_CHANNEL_VALUE_MIN; // Throttle: 988us (Minimum / Cutoff)
+    channels.ch3 = CRSF_CHANNEL_VALUE_MID; // Yaw: 1500us (Center)
+    channels.ch4 = CRSF_CHANNEL_VALUE_MIN; // AUX1 (ARM switch): 988us (Disarmed)
+    channels.ch5 = CRSF_CHANNEL_VALUE_MIN; // AUX2: 988us
+    channels.ch6 = CRSF_CHANNEL_VALUE_MIN; // AUX3: 988us
+    channels.ch7 = CRSF_CHANNEL_VALUE_MIN; // AUX4: 988us
+    channels.ch8 = CRSF_CHANNEL_VALUE_MID; // AUX5..12: 1500us
+    channels.ch9 = CRSF_CHANNEL_VALUE_MID;
+    channels.ch10 = CRSF_CHANNEL_VALUE_MID;
+    channels.ch11 = CRSF_CHANNEL_VALUE_MID;
+    channels.ch12 = CRSF_CHANNEL_VALUE_MID;
+    channels.ch13 = CRSF_CHANNEL_VALUE_MID;
+    channels.ch14 = CRSF_CHANNEL_VALUE_MID;
+    channels.ch15 = CRSF_CHANNEL_VALUE_MID;
+
+    memcpy( &out_frame[3], &channels, sizeof(channels) );
+    out_frame[25] = crsf_crc8( &out_frame[2], 23 );
 }
 
 // CRSF Parser State Machine

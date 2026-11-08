@@ -85,39 +85,11 @@ static bool lora_transmit( const uint8_t *data, uint8_t size )
     return true;
 }
 
-// Build a simulated CRSF RC Channels frame (for standalone testing without handset)
+// Build a safe Failsafe / Neutral CRSF frame (Throttle=MIN, Roll/Pitch/Yaw=MID, ARM=MIN)
 static void crsf_build_simulated_frame( uint8_t *out_frame, uint16_t sweep_val )
 {
-    out_frame[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER; // 0xC8 (Target address for Flight Controller)
-    out_frame[1] = 24; // Length: Type (1) + Payload (22) + CRC (1) = 24
-    out_frame[2] = CRSF_FRAMETYPE_RC_CHANNELS_PACKED;
-
-    crsf_channels_t channels;
-    // Ch0 (Roll): dynamic sweep between 600 and 1400
-    channels.ch0 = sweep_val;
-    // Ch1 (Pitch): 992 (1500us standard center)
-    channels.ch1 = 992;
-    // Ch2 (CH3 Throttle): 172 (~988us, minimum stick to ensure motor safety)
-    channels.ch2 = 172;
-    // Ch3 (Yaw): 992 (1500us standard center)
-    channels.ch3 = 992;
-    // Aux 1 (ARM switch): 172 (Disarmed for safety)
-    channels.ch4 = 172;
-    // Aux 2..12: 172 / 992
-    channels.ch5 = 172;
-    channels.ch6 = 172;
-    channels.ch7 = 172;
-    channels.ch8 = 992;
-    channels.ch9 = 992;
-    channels.ch10 = 992;
-    channels.ch11 = 992;
-    channels.ch12 = 992;
-    channels.ch13 = 992;
-    channels.ch14 = 992;
-    channels.ch15 = 992;
-
-    memcpy( &out_frame[3], &channels, sizeof(channels) );
-    out_frame[25] = crsf_crc8( &out_frame[2], 23 ); // CRC over Type (1) + Payload (22)
+    (void)sweep_val;
+    crsf_build_failsafe_frame( out_frame );
 }
 
 int main( void )
@@ -233,7 +205,7 @@ int main( void )
                 last_tx_time_us = now_us; // Resync if paused
             }
 
-            if( using_real_handset && ( now - last_real_rx_time ) <= 1000 && latest_crsf_len > 0 )
+            if( using_real_handset && ( now - last_real_rx_time ) <= 100 && latest_crsf_len > 0 )
             {
                 // Transmit latest handset stick positions at exact 100Hz
                 if( lora_transmit( latest_crsf_frame, latest_crsf_len ) )
@@ -243,18 +215,14 @@ int main( void )
             }
             else
             {
-                // Fallback to simulated test generator (100Hz sweep) if no handset signal
+                // Fallback to failsafe neutral frame (Throttle=MIN, Roll/Pitch/Yaw=MID, ARM=MIN)
                 using_real_handset = false;
                 uint8_t sim_frame[CRSF_RC_FRAME_SIZE];
-                crsf_build_simulated_frame( sim_frame, sweep_val );
+                crsf_build_simulated_frame( sim_frame, 0 );
                 if( lora_transmit( sim_frame, CRSF_RC_FRAME_SIZE ) )
                 {
                     packet_counter++;
                 }
-
-                sweep_val += sweep_dir;
-                if( sweep_val >= 1400 ) { sweep_dir = -10; }
-                else if( sweep_val <= 600 ) { sweep_dir = 10; }
             }
         }
 

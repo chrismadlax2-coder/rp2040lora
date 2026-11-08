@@ -219,14 +219,25 @@ int main( void )
             }
         }
 
-        // 3. Failsafe check (if no packet for > 150ms)
-        bool failsafe = ( ( now_us - last_packet_time_us ) > 150000 );
+        // 3. Failsafe check (if no packet for > 100ms)
+        bool failsafe = ( ( now_us - last_packet_time_us ) > 100000 );
+        static uint64_t last_failsafe_out_time_us = 0;
 
-        // 4. LED Status indication
+        // 4. LED Status indication and Active Failsafe RC Frame Injection
         if( failsafe )
         {
             // Blink LED slowly (2Hz) on Failsafe
             gpio_put( LED_PIN, ( ( now_us / 250000 ) % 2 ) );
+
+            // Actively output Failsafe CRSF frame at 50Hz (every 20ms) to Flight Controller
+            // Forces Throttle to MIN (988us), Roll/Pitch/Yaw to MID (1500us), ARM to DISARM (988us)
+            if( ( now_us - last_failsafe_out_time_us ) >= 20000 )
+            {
+                last_failsafe_out_time_us = now_us;
+                uint8_t fs_frame[CRSF_RC_FRAME_SIZE];
+                crsf_build_failsafe_frame( fs_frame );
+                uart_write_blocking( CRSF_UART, fs_frame, CRSF_RC_FRAME_SIZE );
+            }
         }
         else
         {
