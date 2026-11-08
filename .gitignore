@@ -1,0 +1,18 @@
+# Build directories and compiler outputs
+build/
+RP2040-LoRa-TestCode/build/
+*.obj
+*.elf
+*.bin
+*.hex
+*.map
+*.dis
+
+# Editor and IDE configurations
+.vscode/
+.idea/
+
+# OS specific files
+Thumbs.db
+.DS_Store
+*.tmp
