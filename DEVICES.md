@@ -7,7 +7,7 @@
 | 設備代號 | 角色 | 韌體檔案 | RP2040 晶片唯一編號 (Serial ID) | 預設 COM 埠 | 說明 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **板子 A** | **接收機 (RX)** | `build/examples/crsf-rc/crsf_rx.uf2` | `E663B035975EC02C` | COM17 | 連接遙控模型飛控板 (GPIO0 -> FC RX, GP2 -> 配對引腳) |
-| **板子 B** | **發射機 1 (TX 1)** | `build/examples/crsf-rc/crsf_tx.uf2` | `E663B0359715412B` | COM8 | 連接遙控器發射模組 1 (GP1 <- Handset, GP2 -> 配對引腳) |
+| **板子 B** | **發射機 1 (TX 1)** | `build/examples/crsf-rc/crsf_tx.uf2` | 32-bit UID: `0x2B411597` | COM8 | 連接遙控器發射模組 1 (GP1 <- Handset, GP2 -> 配對引腳) |
 | **板子 C** | **發射機 2 (TX 2)** | `build/examples/crsf-rc/crsf_tx.uf2` | 32-bit UID: `0x2C843F97` | COM19 | 新增發射機模組 2 (GP1 <- Handset, GP2 -> 配對引腳) |
 
 ---
@@ -51,4 +51,4 @@
 - **雙重失控保護**:
   - 發射端（板 B/C）：手柄 CRSF 斷訊超時（>100ms）自動廣播安全回退幀（油門 988µs，姿態 1500µs 中立，ARM 988µs 鎖定）
   - 接收端（板 A）：射頻斷訊超時（>100ms）主動以 50Hz 持續注入安全 CRSF 舵量至飛控
-- **驗證狀態**: 2026-11-08 實機全鏈路驗證通過（Betaflight 100Hz 零延遲；ArduPilot 雙重失控保護通過；GP2 硬體空中配對與 Flash 記憶實測成功）
+- **驗證狀態**: 2026-11-08 實機全鏈路驗證通過（Betaflight 100Hz 零延遲；ArduPilot 雙重失控保護通過；GP2 空中配對、Flash 斷電記憶與非配對發射機防串擾隔離全數實測通過）

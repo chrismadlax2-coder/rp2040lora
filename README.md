@@ -126,3 +126,8 @@ Copy-Item build/examples/crsf-rc/crsf_rx.uf2 I:\
     - **連線鎖定**：板 C 斷開 GP2 恢復 100Hz FHSS 發射，板 A 瞬間鎖定（LED 恆亮），即時除錯確認：
       `[RX] Rate: 100 pkts/s | FHSS: LOCKED 100Hz (Ch 5 435.0MHz) | Bound UID: 0x2C843F97 | RSSI: -7dBm | SNR: 2dB`
     - **斷電記憶**：接收端斷電重啟後無需重新配對，直接從 Flash 載入專屬 UID 秒連。
+  - **空域防串擾與非法發射機隔離驗證 (板 B 發射機 vs 板 A 接收機)**:
+    - **測試條件**：板 A 內部配對綁定板 C（`0x2C843F97`），板 C 關機；此時開啟未配對的板 B（TX 1，UID `0x2B411597`）於同頻段 100Hz 滿功率發射。
+    - **接收端表現**：板 A 檢測到射頻訊號（RSSI -8dBm, SNR 2dB），但因 UID 不符合直接於 RF 層丟棄，即時日誌確認：
+      `[RX] Rate: 0 pkts/s | FHSS: SEARCHING (Ch0) | Bound UID: 0x2C843F97 | RSSI: -8dBm | SNR: 2dB`
+    - **飛安保護結果**：板 A 維持 2Hz 慢閃搜尋狀態，拒絕鎖定板 B；地面站 Mission Planner 顯示持續維持失控保護安全舵量（油門 987µs、姿態回中 1500µs），徹底防止被非配對發射機誤劫持。
