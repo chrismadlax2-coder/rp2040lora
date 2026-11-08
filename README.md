@@ -131,3 +131,8 @@ Copy-Item build/examples/crsf-rc/crsf_rx.uf2 I:\
     - **接收端表現**：板 A 檢測到射頻訊號（RSSI -8dBm, SNR 2dB），但因 UID 不符合直接於 RF 層丟棄，即時日誌確認：
       `[RX] Rate: 0 pkts/s | FHSS: SEARCHING (Ch0) | Bound UID: 0x2C843F97 | RSSI: -8dBm | SNR: 2dB`
     - **飛安保護結果**：板 A 維持 2Hz 慢閃搜尋狀態，拒絕鎖定板 B；地面站 Mission Planner 顯示持續維持失控保護安全舵量（油門 987µs、姿態回中 1500µs），徹底防止被非配對發射機誤劫持。
+  - **跨發射機動態重新對頻驗證 (板 B 發射機 $\rightarrow$ 板 A 接收機)**:
+    - **重新對頻操作**：將板 A 與板 B 的 GP2 同步短路接地，板 A 成功捕獲板 B 的信標，將內部 Flash 的 UID 覆蓋為 `0x2B411597`。
+    - **連線與操控驗證**：GP2 斷開後，板 A 瞬間鎖定板 B，即時日誌確認：
+      `[RX] Rate: 100 pkts/s | FHSS: LOCKED 100Hz | Bound UID: 0x2B411597 | RSSI: -1dBm | SNR: 2dB`
+    - **地面站即時舵量**：Mission Planner 接收機校準分頁確認遙控器手動輸入舵量流暢跟隨，無體感延遲，證實多發射機與接收機之動態配對、儲存與切換機制完全健全。
