@@ -140,4 +140,5 @@ Copy-Item build/examples/crsf-rc/crsf_rx.uf2 I:\
     - **測試條件**：板 A 重新綁定板 B（`0x2B411597`）後，關閉板 B，重新開啟先前綁定過但已被覆蓋的板 C（TX 2，UID `0x2C843F97`）。
     - **接收端表現**：板 A 感應到極強射頻（RSSI -1dBm, SNR 2dB），但判定非當前綁定之 UID，立即全數拋棄，除錯日誌確認：
       `[RX] Rate: 0 pkts/s | FHSS: SEARCHING (Ch0) | Bound UID: 0x2B411597 | RSSI: -1dBm | SNR: 2dB`
+    - **地面站即時舵量**：實體手動操作板 C 連接之遙控器搖桿，Mission Planner 接收機分頁舵量完全無任何變化與抖動，穩如泰山。
     - **驗證結論**：舊發射機（板 C）已被徹底作廢，百分之百無法再對板 A 產生任何控制或干擾，雙向防串擾機制無懈可擊。
