@@ -20,7 +20,7 @@
            │ 即時換頻 (Immediate Slot Advance) + 時鐘飛輪
            │ 標準 CRSF 輸出 (416,666 bps)
            ▼
-[ 飛控板 (Omnibus F4SD / Betaflight) ]
+[ 飛控板 (Omnibus F4SD / Betaflight / ArduPilot) ]
 ```
 
 ---
@@ -70,6 +70,10 @@
    - 消除 Semtech 官方 `Radio.Sleep()` 的 2ms 延遲阻塞，全面採用微秒級 `Radio.Standby()` 完成頻率重設。
 4. **時鐘飛輪 (Clock Flywheel)**：
    - 當單一頻點遭遇突發性空中雜訊時，飛輪定時器（12.5ms 超時）自動強制跳頻，維持與發射端的同步步調。
+5. **主動式失控保護 (Active Failsafe Frame Injection)**：
+   - 當空中 LoRa 射頻中斷超過 100ms（如遙控器關機或超出通訊範圍），接收機自動切換為主動失控保護模式。
+   - 以標準 50Hz 頻率持續向飛控注入 CRSF 安全舵量（油門 CH3 = 988µs / 姿態 CH1, CH2, CH4 = 1500µs / 解鎖 CH5 = 988µs 鎖定）。
+   - 完美解決 ArduPilot 在接收端停發封包時「凍結最後舵量（Hold Last Position）」的致命飛安隱患，立即觸發 `FS_THR_VALUE` 進入 RTL 返航或自動迫降。
 
 ---
 
@@ -107,4 +111,8 @@ Copy-Item build/examples/crsf-rc/crsf_rx.uf2 I:\
 - **實測日期**: 2026-11-08
 - **發射機輸出**: `Rate: 100 pkts/s | FHSS: HOPPING (Ch X) | Mode: HANDSET UART | GP1: ~7100 B/s (Valid: 250)`
 - **接收機輸出**: `Rate: 100 pkts/s | FHSS: LOCKED 100Hz | RSSI: -4~-5 dBm | SNR: 2 dB`
-- **地面站驗證**: Betaflight Configurator 接收機分頁舵面跟隨流暢，無體感延遲，Failsafe 警告完全解除。
+- **地面站驗證記錄**:
+  - **Betaflight Configurator**: 接收機分頁舵面跟隨流暢，無體感延遲，100Hz 滿速刷新。
+  - **ArduPilot 4.8.0-dev (Mission Planner 遙控器校準分頁)**:
+    - 正常連線：手柄搖桿即時跟隨無延遲。
+    - 斷電模擬失去訊號：手柄斷電後 100ms 內，油門（Throttle rc3）即時降至 `987µs`，副翼（Roll rc1）、升降（Pitch rc2）、方向（Yaw rc4）準確回中至 `1500µs`，Radio 5 (ARM) 下降至 `987µs`，成功觸發飛控失控保護。
