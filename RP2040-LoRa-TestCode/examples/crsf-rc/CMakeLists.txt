@@ -9,6 +9,9 @@ target_link_libraries(crsf_tx
     pico_lora_sx1262
     hardware_spi
     hardware_uart
+    hardware_flash
+    hardware_sync
+    pico_unique_id
     pico_stdlib
 )
 
@@ -25,6 +28,9 @@ target_link_libraries(crsf_rx
     pico_lora_sx1262
     hardware_spi
     hardware_uart
+    hardware_flash
+    hardware_sync
+    pico_unique_id
     pico_stdlib
 )
 

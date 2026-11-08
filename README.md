@@ -29,8 +29,9 @@
 
 | 設備代號 | 角色 | 預設 COM | RP2040 晶片 Unique ID | 連接目標 | 腳位定義 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **板 A** | **接收機 (RX)** | COM17 | `E663B035975EC02C` | Omnibus F4SD 飛控 (UART6) | **GP0** (TX) $\rightarrow$ FC RX<br>**GND** $\rightarrow$ FC GND<br>**VSYS** $\rightarrow$ FC 5V |
-| **板 B** | **發射機 (TX)** | COM8 | `E663B0359715412B` | FS-i6X 遙控器 (OpenI6X) | **GP1** (RX Inverted) $\leftarrow$ 手柄 PD5 (USART2_TX)<br>**GND** $\rightarrow$ 手柄 GND<br>**VSYS** $\leftarrow$ 手柄電源 |
+| **板 A** | **接收機 (RX)** | COM17 | `E663B035975EC02C` | Omnibus F4SD 飛控 (UART6) | **GP0** (TX) $\rightarrow$ FC RX<br>**GP2** $\rightarrow$ BIND 引腳（接地對頻）<br>**GND** $\rightarrow$ FC GND<br>**VSYS** $\rightarrow$ FC 5V |
+| **板 B** | **發射機 1 (TX 1)** | COM8 | `E663B0359715412B` | FS-i6X 遙控器 (OpenI6X) | **GP1** (RX Inverted) $\leftarrow$ 手柄 PD5<br>**GP2** $\rightarrow$ BIND 引腳（接地廣播）<br>**GND** $\rightarrow$ 手柄 GND<br>**VSYS** $\leftarrow$ 手柄電源 |
+| **板 C** | **發射機 2 (TX 2)** | COM19 | UID: `0x2C843F97` | 備用/多控發射模組 | **GP1** (RX Inverted) $\leftarrow$ 手柄訊號<br>**GP2** $\rightarrow$ BIND 引腳（接地廣播）<br>**GND** / **VSYS** $\leftarrow$ 供電 |
 
 ---
 
@@ -74,6 +75,10 @@
    - **發射端保護 (TX Level)**：當手柄斷電或 CRSF 信號中斷超過 100ms，板 B 自動切入安全回退機制，持續以 100Hz 空中廣播安全 CRSF 舵量（油門 MIN 988µs / 姿態 MID 1500µs / 解鎖 DISARM 988µs）。
    - **接收端保護 (RX Level)**：當空中射頻訊號完全中斷超過 100ms，板 A 主動以 50Hz 頻率向飛控注入標準 CRSF 安全舵量。
    - **消除致命飛安隱患**：無論是手柄端掉電還是空中射頻中斷，皆能完美解決 ArduPilot 在接收端斷訊時「凍結最後舵量（Hold Last Position）」的致命問題，立即觸發 `FS_THR_VALUE` 進入 RTL 返航或自動迫降。
+6. **硬體配對與 Flash NVM 持久化 (GP2 Hardware Binding & Storage)**：
+   - **32-bit 硬體唯一 UID**：發射端自動提取 RP2040 Flash Unique ID 作為專屬發射識別碼。
+   - **GP2 一鍵配對模式**：將 GP2 引腳接地（GND），發射端自動在基準頻點（431.5MHz）廣播配對信標；接收端在 GP2 接地或無配對紀錄時自動監聽。
+   - **內部 Flash 永久記憶**：配對成功後，接收端自動將 TX UID 寫入 RP2040 內部 SPI Flash 末端扇區，掉電不遺失，開機秒連並嚴格過濾非配對發射機訊號。
 
 ---
 

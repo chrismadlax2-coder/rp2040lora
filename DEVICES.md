@@ -6,8 +6,9 @@
 
 | 設備代號 | 角色 | 韌體檔案 | RP2040 晶片唯一編號 (Serial ID) | 預設 COM 埠 | 說明 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **板子 A** | **接收機 (RX)** | `build/examples/crsf-rc/crsf_rx.uf2` | `E663B035975EC02C` | COM17 | 連接遙控模型飛控板 (GPIO0 -> FC RX) |
-| **板子 B** | **發射機 (TX)** | `build/examples/crsf-rc/crsf_tx.uf2` | `E663B0359715412B` | COM8 | 連接遙控器發射模組 (Radio TX -> GPIO1) |
+| **板子 A** | **接收機 (RX)** | `build/examples/crsf-rc/crsf_rx.uf2` | `E663B035975EC02C` | COM17 | 連接遙控模型飛控板 (GPIO0 -> FC RX, GP2 -> 配對引腳) |
+| **板子 B** | **發射機 1 (TX 1)** | `build/examples/crsf-rc/crsf_tx.uf2` | `E663B0359715412B` | COM8 | 連接遙控器發射模組 1 (GP1 <- Handset, GP2 -> 配對引腳) |
+| **板子 C** | **發射機 2 (TX 2)** | `build/examples/crsf-rc/crsf_tx.uf2` | 32-bit UID: `0x2C843F97` | COM19 | 新增發射機模組 2 (GP1 <- Handset, GP2 -> 配對引腳) |
 
 ---
 
@@ -15,11 +16,13 @@
 
 ### 板子 A - 接收機 (RX: `E663B035975EC02C`)
 - **GPIO 0 (Pin 1)**: UART0 TX (416,666 bps) -> 接飛控 CRSF RX
+- **GPIO 2 (Pin 4)**: **BIND 配對觸發引腳**（內部上拉；接地 GND 進入對頻模式，LED 10Hz 快閃）
 - **GND (Pin 3)**: 接飛控 GND
 - **VSYS (Pin 31)**: 接飛控 5V 供電 (3.6V ~ 5.5V)
 
-### 板子 B - 發射機 (TX: `E663B0359715412B`)
-- **GPIO 1 (Pin 2)**: UART0 RX (416,666 bps) -> 接遙控器 CRSF TX / S.PORT
+### 板子 B / 板子 C - 發射機 (TX)
+- **GPIO 1 (Pin 2)**: UART0 RX (400,000 bps) -> 接遙控器 CRSF TX / S.PORT (內部反相)
+- **GPIO 2 (Pin 4)**: **BIND 配對廣播引腳**（內部上拉；接地 GND 進入對頻廣播，在 431.5MHz 發送 Beacon）
 - **GND (Pin 3)**: 接遙控器模組槽 GND
 - **VSYS (Pin 31) / VBUS (Pin 32)**: 接遙控器 5V 電源或電池
 

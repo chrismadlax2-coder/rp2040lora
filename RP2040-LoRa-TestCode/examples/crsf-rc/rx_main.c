@@ -9,6 +9,7 @@
 #include "sx126x-board.h"
 #include "crsf.h"
 #include "fhss.h"
+#include "nvm_config.h"
 
 // Hardware Configuration
 #define CRSF_UART             uart0
@@ -27,8 +28,9 @@
 
 // FHSS States
 typedef enum {
-    FHSS_STATE_SEARCHING = 0, // Park on Ch 0 listening for TX sync
-    FHSS_STATE_LOCKED    = 1  // Synchronized and hopping with flywheel timer
+    FHSS_STATE_BINDING   = 0, // Park on Ch 0 listening for TX Pair Beacon
+    FHSS_STATE_SEARCHING = 1, // Park on Ch 0 listening for paired TX sync
+    FHSS_STATE_LOCKED    = 2  // Synchronized and hopping with flywheel timer
 } fhss_rx_state_t;
 
 // Radio Callbacks & State
@@ -42,6 +44,10 @@ static volatile uint32_t rx_packet_count = 0;
 static volatile uint32_t fhss_hop_count = 0;
 static volatile int16_t last_rssi = 0;
 static volatile int8_t  last_snr = 0;
+
+static rx_config_t rx_cfg;
+static volatile uint32_t bound_tx_uid = 0;
+static volatile bool request_rebind = false;
 
 static void OnTxDone( void )
 {
@@ -58,54 +64,81 @@ static void OnRxDone( uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr 
     Radio.Standby( );
 
     uint64_t now_us = time_us_64( );
+    uint8_t pkt_hop_idx = 0;
+    uint32_t sender_uid = 0;
 
-    // Air packet structure: [Byte 0: FHSS Header] + [Byte 1..size-1: CRSF Frame]
-    if( size >= 5 && size <= ( CRSF_MAX_FRAME_SIZE + 1 ) )
+    int parse_result = fhss_parse_packet( payload, size, bound_tx_uid, &pkt_hop_idx, &sender_uid );
+
+    // 1. Process BIND Beacon Frame (0xBD)
+    if( parse_result == 2 )
     {
-        uint8_t fhss_hdr = payload[0];
-        uint8_t pkt_hop_idx = 0;
-
-        if( fhss_validate_header( fhss_hdr, &pkt_hop_idx ) )
+        if( fhss_state == FHSS_STATE_BINDING || gpio_get( BIND_PIN ) == 0 || !rx_cfg.is_bound )
         {
-            uint8_t *crsf_frame = &payload[1];
-            uint16_t crsf_size = size - 1;
-            uint8_t frame_len = crsf_frame[1];
+            // Bind packet received while in bind mode!
+            bound_tx_uid = sender_uid;
+            rx_cfg.bound_tx_uid = sender_uid;
+            rx_cfg.is_bound = 1;
+            rx_cfg.fhss_salt = payload[5];
 
-            if( ( frame_len + 2 ) == crsf_size )
+            // Save to Flash NVM
+            nvm_save_config( &rx_cfg );
+
+            printf( "\r\n[RX BIND] *** PAIRING SUCCESSFUL! Bound to TX UID: 0x%08lX ***\r\n", 
+                    (unsigned long)sender_uid );
+
+            // Exit bind mode if pin is released
+            if( gpio_get( BIND_PIN ) != 0 )
             {
-                uint8_t calc_crc = crsf_crc8( &crsf_frame[2], crsf_size - 3 );
-                if( calc_crc == crsf_frame[crsf_size - 1] )
+                fhss_state = FHSS_STATE_SEARCHING;
+                current_rx_hop_idx = FHSS_SYNC_CHANNEL_IDX;
+            }
+
+            SX126xAntSwOn( );
+            Radio.Rx( 0 );
+            return;
+        }
+    }
+
+    // 2. Process Standard RC Frame
+    if( parse_result == 1 )
+    {
+        uint8_t *crsf_frame = &payload[FHSS_HEADER_SIZE_RC];
+        uint16_t crsf_size = size - FHSS_HEADER_SIZE_RC;
+        uint8_t frame_len = crsf_frame[1];
+
+        if( ( frame_len + 2 ) == crsf_size )
+        {
+            uint8_t calc_crc = crsf_crc8( &crsf_frame[2], crsf_size - 3 );
+            if( calc_crc == crsf_frame[crsf_size - 1] )
+            {
+                last_packet_time_us = now_us;
+                last_rssi = rssi;
+                last_snr = snr;
+                rx_packet_count++;
+
+                // Ensure target address is Flight Controller (0xC8)
+                if( crsf_frame[2] == CRSF_FRAMETYPE_RC_CHANNELS_PACKED )
                 {
-                    last_packet_time_us = now_us;
-                    last_rssi = rssi;
-                    last_snr = snr;
-                    rx_packet_count++;
-
-                    // Ensure target address is Flight Controller (0xC8) so FC doesn't discard
-                    if( crsf_frame[2] == CRSF_FRAMETYPE_RC_CHANNELS_PACKED )
-                    {
-                        crsf_frame[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
-                    }
-
-                    // Verified CRSF frame! Output directly to Flight Controller UART
-                    uart_write_blocking( CRSF_UART, crsf_frame, crsf_size );
-
-                    // Immediately switch to the next channel for the next 100Hz slot!
-                    fhss_state = FHSS_STATE_LOCKED;
-                    current_rx_hop_idx = ( pkt_hop_idx + 1 ) % FHSS_NUM_CHANNELS;
-                    // Next packet expected in 10ms. Flywheel deadline set to 12.5ms
-                    next_hop_time_us = now_us + 12500;
-
-                    Radio.SetChannel( fhss_get_freq( current_rx_hop_idx ) );
-                    SX126xAntSwOn( );
-                    Radio.Rx( 0 );
-                    return;
+                    crsf_frame[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
                 }
+
+                // Output directly to Flight Controller UART
+                uart_write_blocking( CRSF_UART, crsf_frame, crsf_size );
+
+                // Advance immediately to next slot!
+                fhss_state = FHSS_STATE_LOCKED;
+                current_rx_hop_idx = ( pkt_hop_idx + 1 ) % FHSS_NUM_CHANNELS;
+                next_hop_time_us = now_us + 12500;
+
+                Radio.SetChannel( fhss_get_freq( current_rx_hop_idx ) );
+                SX126xAntSwOn( );
+                Radio.Rx( 0 );
+                return;
             }
         }
     }
 
-    // Unrecognized or corrupted frame - stay on current channel
+    // Unmatched packet or corrupted frame - continue listening on current channel
     SX126xAntSwOn( );
     Radio.Rx( 0 );
 }
@@ -137,6 +170,11 @@ int main( void )
     gpio_set_dir( LED_PIN, GPIO_OUT );
     gpio_put( LED_PIN, 0 );
 
+    // Initialize GP2 as BIND trigger pin with internal pull-up
+    gpio_init( BIND_PIN );
+    gpio_set_dir( BIND_PIN, GPIO_IN );
+    gpio_pull_up( BIND_PIN );
+
     // Initialize UART0 for CRSF output to Flight Controller
     uart_init( CRSF_UART, CRSF_UART_BAUDRATE );
     gpio_set_function( CRSF_TX_PIN, GPIO_FUNC_UART );
@@ -163,7 +201,7 @@ int main( void )
                        LORA_PREAMBLE_LENGTH,
                        0,
                        LORA_FIX_LEN,
-                       CRSF_MAX_FRAME_SIZE + 1,
+                       FHSS_HEADER_SIZE_RC + CRSF_MAX_FRAME_SIZE,
                        LORA_CRC_ON,
                        0,
                        0,
@@ -173,8 +211,36 @@ int main( void )
     SX126xAntSwOn( );
     Radio.Rx( 0 ); // Start continuous receiving on Sync Channel 0
 
+    // Load paired TX configuration from RP2040 Flash NVM
+    bool has_config = nvm_load_config( &rx_cfg );
+    if( has_config && rx_cfg.is_bound && rx_cfg.bound_tx_uid != 0 )
+    {
+        bound_tx_uid = rx_cfg.bound_tx_uid;
+        fhss_state = FHSS_STATE_SEARCHING;
+    }
+    else
+    {
+        bound_tx_uid = 0;
+        fhss_state = FHSS_STATE_BINDING;
+    }
+
+    // Check if GP2 is grounded on boot -> force bind mode
+    if( gpio_get( BIND_PIN ) == 0 )
+    {
+        fhss_state = FHSS_STATE_BINDING;
+    }
+
     printf( "\r\n=========================================\r\n" );
     printf( "   RP2040-LoRa CRSF RX Receiver (FHSS)   \r\n" );
+    printf( "   GP2: BIND Pin (Connect to GND to Pair)\r\n" );
+    if( rx_cfg.is_bound )
+    {
+        printf( "   Paired TX UID: 0x%08lX (from Flash)\r\n", (unsigned long)bound_tx_uid );
+    }
+    else
+    {
+        printf( "   Status: UNBOUND - Waiting for Pair\r\n" );
+    }
     printf( "   FHSS: 8 Channels (431.0 ~ 435.0 MHz)  \r\n" );
     printf( "   UART Output: 416666 bps on GP0 (TX)   \r\n" );
     printf( "=========================================\r\n" );
@@ -191,10 +257,40 @@ int main( void )
 
         uint64_t now_us = time_us_64( );
 
-        // 2. FHSS Hopping Engine & Flywheel
+        // 2. Check GP2 BIND trigger pin
+        if( gpio_get( BIND_PIN ) == 0 )
+        {
+            if( fhss_state != FHSS_STATE_BINDING )
+            {
+                fhss_state = FHSS_STATE_BINDING;
+                current_rx_hop_idx = FHSS_SYNC_CHANNEL_IDX;
+                Radio.Standby( );
+                Radio.SetChannel( fhss_get_freq( FHSS_SYNC_CHANNEL_IDX ) );
+                SX126xAntSwOn( );
+                Radio.Rx( 0 );
+                printf( "[RX] GP2 Grounded -> Entering BIND MODE on 431.5MHz...\r\n" );
+            }
+        }
+
+        // 3. Handle Binding Mode
+        if( fhss_state == FHSS_STATE_BINDING )
+        {
+            // Rapid blink LED (10Hz)
+            gpio_put( LED_PIN, ( ( now_us / 50000 ) % 2 ) );
+
+            if( ( now_us - last_stat_time_us ) >= 1000000 )
+            {
+                last_stat_time_us = now_us;
+                printf( "[RX BIND] Waiting for TX Beacon on Ch 0 (431.5MHz)... Current Bound: 0x%08lX\r\n",
+                        (unsigned long)bound_tx_uid );
+            }
+            continue; // Do not run hopping engine while in bind mode
+        }
+
+        // 4. FHSS Hopping Engine & Flywheel
         if( fhss_state == FHSS_STATE_LOCKED )
         {
-            // If the expected packet didn't arrive by deadline, flywheel hops to next channel!
+            // If expected packet didn't arrive by deadline, flywheel hops to next channel!
             if( now_us >= next_hop_time_us )
             {
                 current_rx_hop_idx = ( current_rx_hop_idx + 1 ) % FHSS_NUM_CHANNELS;
@@ -219,18 +315,17 @@ int main( void )
             }
         }
 
-        // 3. Failsafe check (if no packet for > 100ms)
+        // 5. Failsafe check (if no packet for > 100ms)
         bool failsafe = ( ( now_us - last_packet_time_us ) > 100000 );
         static uint64_t last_failsafe_out_time_us = 0;
 
-        // 4. LED Status indication and Active Failsafe RC Frame Injection
+        // 6. LED Status indication and Active Failsafe RC Frame Injection
         if( failsafe )
         {
             // Blink LED slowly (2Hz) on Failsafe
             gpio_put( LED_PIN, ( ( now_us / 250000 ) % 2 ) );
 
             // Actively output Failsafe CRSF frame at 50Hz (every 20ms) to Flight Controller
-            // Forces Throttle to MIN (988us), Roll/Pitch/Yaw to MID (1500us), ARM to DISARM (988us)
             if( ( now_us - last_failsafe_out_time_us ) >= 20000 )
             {
                 last_failsafe_out_time_us = now_us;
@@ -241,21 +336,22 @@ int main( void )
         }
         else
         {
-            // Solid ON when receiving healthy stream
+            // Solid ON when receiving healthy stream from bound TX
             gpio_put( LED_PIN, 1 );
         }
 
-        // 5. Output Status Statistics every 1 second
+        // 7. Output Status Statistics every 1 second
         if( ( now_us - last_stat_time_us ) >= 1000000 )
         {
             last_stat_time_us = now_us;
             uint32_t cur_freq = fhss_get_freq( current_rx_hop_idx );
-            printf( "[RX] Rate: %lu pkts/s | FHSS: %s (Ch %u %lu.%01luMHz) | RSSI: -%ddBm | SNR: %ddB\r\n",
+            printf( "[RX] Rate: %lu pkts/s | FHSS: %s (Ch %u %lu.%01luMHz) | Bound UID: 0x%08lX | RSSI: -%ddBm | SNR: %ddB\r\n",
                     (unsigned long)rx_packet_count,
                     ( fhss_state == FHSS_STATE_LOCKED ) ? "LOCKED 100Hz" : "SEARCHING (Ch0)",
                     current_rx_hop_idx,
                     (unsigned long)( cur_freq / 1000000 ),
                     (unsigned long)( ( cur_freq % 1000000 ) / 100000 ),
+                    (unsigned long)bound_tx_uid,
                     -last_rssi / 2,
                     last_snr / 4 );
             rx_packet_count = 0;
