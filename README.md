@@ -121,4 +121,8 @@ Copy-Item build/examples/crsf-rc/crsf_rx.uf2 I:\
   - **ArduPilot 4.8.0-dev (Mission Planner 遙控器校準分頁)**:
     - **正常連線**：手柄搖桿即時跟隨無延遲。
     - **板 B 手柄訊號中斷驗證**：手柄 CRSF 訊號中斷後，板 B 自動廣播安全回退舵量，地面站確認油門降至 `987µs`、姿態自動居中 `1500µs`、ARM 鎖定 `987µs`，飛控觸發 `Locate Copter alarm` 警報。
-    - **板 A 射頻斷訊模擬驗證**：關閉發射端電源後，板 A 接收機主動以 50Hz 注入安全 CRSF 舵量，飛控穩定維持安全舵量並觸發失控保護返航。
+  - **硬體配對與 Flash NVM 持久化驗證 (板 C 發射機 $\rightarrow$ 板 A 接收機)**:
+    - **配對觸發**：板 C（TX 2，UID `0x2C843F97`）將 GP2 接地廣播信標（LED 10Hz 快閃）；板 A（RX）檢測到信標後瞬間完成配對並寫入 RP2040 內部 Flash，LED 由快閃轉為等待連線慢閃。
+    - **連線鎖定**：板 C 斷開 GP2 恢復 100Hz FHSS 發射，板 A 瞬間鎖定（LED 恆亮），即時除錯確認：
+      `[RX] Rate: 100 pkts/s | FHSS: LOCKED 100Hz (Ch 5 435.0MHz) | Bound UID: 0x2C843F97 | RSSI: -7dBm | SNR: 2dB`
+    - **斷電記憶**：接收端斷電重啟後無需重新配對，直接從 Flash 載入專屬 UID 秒連。
