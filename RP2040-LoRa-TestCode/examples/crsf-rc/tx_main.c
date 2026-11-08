@@ -95,15 +95,18 @@ static void crsf_build_simulated_frame( uint8_t *out_frame, uint16_t sweep_val )
     crsf_channels_t channels;
     // Ch0 (Roll): dynamic sweep between 600 and 1400
     channels.ch0 = sweep_val;
-    // Ch1 (Pitch), Ch2 (Throttle), Ch3 (Yaw): 992 (1500us standard center)
+    // Ch1 (Pitch): 992 (1500us standard center)
     channels.ch1 = 992;
-    channels.ch2 = 992;
+    // Ch2 (CH3 Throttle): 172 (~988us, minimum stick to ensure motor safety)
+    channels.ch2 = 172;
+    // Ch3 (Yaw): 992 (1500us standard center)
     channels.ch3 = 992;
-    // Aux 1..12: 992
-    channels.ch4 = 992;
-    channels.ch5 = 992;
-    channels.ch6 = 992;
-    channels.ch7 = 992;
+    // Aux 1 (ARM switch): 172 (Disarmed for safety)
+    channels.ch4 = 172;
+    // Aux 2..12: 172 / 992
+    channels.ch5 = 172;
+    channels.ch6 = 172;
+    channels.ch7 = 172;
     channels.ch8 = 992;
     channels.ch9 = 992;
     channels.ch10 = 992;
